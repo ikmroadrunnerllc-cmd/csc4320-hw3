@@ -1,0 +1,546 @@
+================================================================================
+GEORGIA STATE UNIVERSITY | CSC 4320 / CSC 6320 | FALL 2026
+Operating Systems - Homework 3 Solutions & Evidence
+Instructor: Dr. Roya Hosseini
+Student: Mario Leonel Gutierrez Espinal
+Chapters 3 and 4 | 12 Questions | 100 Points Total
+================================================================================
+
+--------------------------------------------------------------------------------
+CONCURRENCY AND SYNCHRONIZATION (30 points)
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Question 1. Concurrency and timing (6 points)
+--------------------------------------------------------------------------------
+A single-core system has two independent tasks. Task A starts a device read at 
+time 0 and blocks for 14 ms. Task B needs 9 ms of CPU time. The device operates 
+independently of the CPU. Ignore all other work and overhead.
+
+(a) Find the completion time if B starts only after A finishes. (2 points)
+    Calculation:
+    - Task A starts at t = 0 ms and finishes its device read at t = 14 ms.
+    - Task B starts after A finishes (at t = 14 ms) and runs for 9 ms.
+    - Total completion time = 14 ms + 9 ms = 23 ms.
+    Answer: 23 ms.
+
+(b) Find the earliest completion time if B can run while A waits. (2 points)
+    Calculation:
+    - At t = 0 ms, Task A starts its device read and blocks the CPU for 14 ms.
+    - Since the device operates independently of the CPU, the CPU is completely 
+      idle. Task B can run immediately on the CPU from t = 0 ms to t = 9 ms.
+    - Task B finishes its CPU work at t = 9 ms.
+    - Task A finishes its device read at t = 14 ms.
+    - Both tasks are finished at t = max(14, 9) = 14 ms.
+    Answer: 14 ms.
+
+(c) Explain why this schedule demonstrates concurrency and whether the CPU runs 
+    the two threads in parallel. (2 points)
+    Explanation:
+    - Concurrency: This schedule demonstrates concurrency because both tasks are 
+      making progress during the same overlapping time interval (between 0 ms 
+      and 14 ms). Task A is progressing on the I/O device while Task B is 
+      progressing on the CPU.
+    - Parallelism: The CPU does NOT run the two threads in parallel. This is a 
+      single-core CPU. A single core can only execute instructions for one task 
+      at any given instant. Task A is not running on the CPU while waiting; it is 
+      blocked waiting for hardware I/O. True parallelism requires multiple CPU 
+      cores executing instructions simultaneously.
+
+--------------------------------------------------------------------------------
+Question 2. Lost update (8 points)
+--------------------------------------------------------------------------------
+A shared balance is initially 100. Thread A deposits 30 and thread B deposits 20. 
+Each thread performs three steps in order:
+Step 1: Read balance into a private temporary.
+Step 2: Add deposit to that temporary.
+Step 3: Write temporary back to shared balance.
+
+(a) Give a six-step interleaving that ends with a balance of 120. Show the value 
+    read or written at each shared-memory step. (4 points)
+
+    Step 1: Thread A reads shared balance into tempA  [Shared Memory Read: 100]
+            tempA = 100
+    Step 2: Thread B reads shared balance into tempB  [Shared Memory Read: 100]
+            tempB = 100
+    Step 3: Thread A computes locally: tempA = 100 + 30 = 130
+    Step 4: Thread A writes tempA to shared balance  [Shared Memory Write: 130]
+            balance = 130
+    Step 5: Thread B computes locally: tempB = 100 + 20 = 120
+    Step 6: Thread B writes tempB to shared balance  [Shared Memory Write: 120]
+            balance = 120
+
+    Result: The final value stored in the shared balance is 120.
+
+(b) Give the intended final balance and explain which update was lost in your trace. 
+    (2 points)
+    - Intended Final Balance: 100 + 30 + 20 = 150.
+    - Which Update Was Lost: Thread A's deposit of 30 was lost.
+    - Explanation: Thread B read the original balance of 100 before Thread A 
+      wrote its updated balance of 130. When Thread B wrote 120 at step 6, it 
+      completely wiped out and overwrote Thread A's deposit of 30.
+
+(c) State which operations each thread must protect with the same mutex. (2 points)
+    Answer:
+    Each thread must protect all three steps together as a single atomic critical 
+    section using the same mutex:
+    1. Reading the balance into temporary.
+    2. Adding the deposit to temporary.
+    3. Writing the temporary back to the shared balance.
+    Neither thread should allow an interleaving between the read and the write.
+
+--------------------------------------------------------------------------------
+Question 3. Critical section guarantees (8 points)
+--------------------------------------------------------------------------------
+A lock permits at most one thread in the critical section. Whenever the section 
+is free and at least one thread wants to enter, some contender enters after a 
+finite time, even if other threads remain outside. Under a continuous stream of 
+new arrivals, an older waiting thread can be bypassed indefinitely.
+
+(a) For each property, state whether the lock guarantees it and justify your answer:
+    mutual exclusion, progress, and bounded waiting. (6 points)
+
+    1. Mutual Exclusion:
+       - Status: GUARANTEED.
+       - Justification: The problem explicitly states: "A lock permits at most 
+         one thread in the critical section." Only one thread can be inside at 
+         any time, satisfying mutual exclusion.
+
+    2. Progress:
+       - Status: GUARANTEED.
+       - Justification: The problem states: "Whenever the section is free and 
+         at least one thread wants to enter, some contender enters after a finite 
+         time." Since the selection of the next thread cannot be delayed 
+         indefinitely when threads want to enter, progress is satisfied.
+
+    3. Bounded Waiting:
+       - Status: NOT GUARANTEED.
+       - Justification: The problem states: "Under a continuous stream of new 
+         arrivals, an older waiting thread can be bypassed indefinitely." Bounded 
+         waiting requires an upper limit on how many times other threads can enter 
+         before a waiting thread gets to enter. Because an older thread can starve 
+         forever due to new arrivals, bounded waiting fails.
+
+(b) Name one change to the admission policy that would address the bypass problem. 
+    Assume scheduled threads eventually run and each holder eventually releases 
+    the lock. (2 points)
+    Answer:
+    Change the admission policy to First-Come, First-Served (FCFS / FIFO queue). 
+    Waiting threads are placed in a queue in the order of their arrival and 
+    admitted strictly in that order. This guarantees that every waiting thread is 
+    admitted after a finite number of preceding threads, eliminating starvation.
+
+--------------------------------------------------------------------------------
+Question 4. Bounded buffer with semaphores (8 points)
+--------------------------------------------------------------------------------
+A shared buffer has capacity 4 and starts empty. Use counting semaphores empty 
+and full, plus the mutex m. Assume wait blocks when no permit is available.
+
+(a) Give the initial values of empty and full and the initial state of m. (2 points)
+    - empty = 4  (buffer starts with 4 open slots)
+    - full  = 0  (buffer starts with 0 filled items)
+    - m     = 1  (mutex starts unlocked / binary semaphore initialized to 1)
+
+(b) Write pseudocode for one insertion and one removal, showing all wait, signal, 
+    and mutex operations. (4 points)
+
+    Insertion (Producer):
+        wait(empty);
+        wait(m);
+        // insert item into buffer
+        signal(m);
+        signal(full);
+
+    Removal (Consumer):
+        wait(full);
+        wait(m);
+        // remove item from buffer
+        signal(m);
+        signal(empty);
+
+(c) Explain how a consumer can deadlock the system if it locks m before calling 
+    wait(full) on an empty buffer. (2 points)
+    Explanation:
+    - If the consumer calls wait(m) first on an empty buffer, it acquires the 
+      mutex m.
+    - Then, the consumer calls wait(full). Because the buffer is empty (full == 0), 
+      the consumer blocks and goes to sleep while STILL HOLDING mutex m.
+    - A producer wants to insert an item to wake up the consumer, but the producer 
+      must first acquire mutex m by calling wait(m).
+    - Since the consumer holds mutex m, the producer blocks on wait(m) and cannot 
+      insert an item or call signal(full).
+    - Both threads are permanently blocked waiting for each other -> Deadlock!
+
+--------------------------------------------------------------------------------
+SYNCHRONIZATION AND DEADLOCK (32 points)
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Question 5. Condition variables (8 points)
+--------------------------------------------------------------------------------
+Two consumers wait on a condition variable named notEmpty and share a queue 
+protected by mutex m. A producer inserts one item and wakes both consumers with 
+a broadcast. Before the second consumer reacquires m, the first removes the 
+only item. Each consumer originally checks whether the queue is empty with an if 
+statement before waiting.
+
+(a) Explain what can go wrong when the second consumer resumes. (3 points)
+    Explanation:
+    - Because the consumer uses an "if" statement instead of a "while" loop, it 
+      only checks if the queue is empty BEFORE it goes to sleep.
+    - When the producer broadcasts, both consumers wake up.
+    - Consumer 1 reacquires mutex m first, removes the single item, and unlocks m. 
+      The queue is now completely empty.
+    - When Consumer 2 finally reacquires mutex m, it resumes immediately after the 
+      "if" block without re-checking the condition.
+    - Consumer 2 attempts to dequeue from an empty queue, causing a runtime crash, 
+      buffer underflow exception, or undefined behavior.
+
+(b) Rewrite the consumer’s pseudocode from locking m through unlocking it. Show 
+    how the condition is checked and how the wait interacts with m. (5 points)
+
+    Consumer Pseudocode:
+        lock(m);
+        while (queue.isEmpty()) {
+            wait(notEmpty, m);
+        }
+        item = queue.dequeue();
+        unlock(m);
+
+    Interaction Explanation:
+    1. Condition check: Using "while" ensures that whenever a consumer wakes up, 
+       it re-tests whether an item is truly available before proceeding.
+    2. Wait interaction with m: Inside wait(notEmpty, m), the operating system 
+       atomically releases mutex m and puts the thread to sleep. When the thread 
+       is signaled to wake up, it automatically reacquires mutex m before wait() 
+       returns.
+
+--------------------------------------------------------------------------------
+Question 6. Readers and writers (8 points)
+--------------------------------------------------------------------------------
+A readers-writers lock allows a new reader to join active readers even when a 
+writer is waiting. Each reader eventually finishes, but readers keep arriving 
+and their read intervals overlap so that at least one reader is always active.
+
+(a) Identify the writer’s progress problem and explain why it occurs. (4 points)
+    - Problem Name: Starvation (indefinite postponement) of the writer.
+    - Why it occurs: A writer requires exclusive access to the shared resource, 
+      meaning no readers can be active when the writer writes. Because new readers 
+      are permitted to enter as long as any reader is already active, and the 
+      readers' reading intervals continuously overlap, the active reader count 
+      never reaches 0. Therefore, the waiting writer is blocked indefinitely.
+
+(b) Describe one admission rule that lets an already waiting writer eventually 
+    enter, and give one trade-off for readers. (4 points)
+    - Admission Rule: Writer-Priority (or Writer-Preference). Once a writer 
+      announces its intention to write and begins waiting, no newly arriving 
+      readers are allowed to enter the critical section. New readers must wait 
+      in a queue until the waiting writer acquires the lock, completes, and exits.
+    - Trade-off for Readers: Reduced read concurrency and longer wait times for 
+      readers. Newly arriving readers must wait even if the shared data is 
+      currently only being read by other active readers.
+
+--------------------------------------------------------------------------------
+Question 7. Deadlock conditions and prevention (8 points)
+--------------------------------------------------------------------------------
+Mutexes L1 and L2 are exclusive and cannot be taken from a holder. T1 holds L1 
+and waits for L2. T2 holds L2 and waits for L1. Each thread releases its locks 
+only after it acquires both and finishes its work.
+
+(a) Name all four necessary deadlock conditions and identify how each appears 
+    in this state. (4 points)
+
+    1. Mutual Exclusion: Mutexes L1 and L2 are mutually exclusive; only one 
+       thread can hold a lock at any given time.
+    2. Hold and Wait: Thread T1 holds L1 while waiting to acquire L2; Thread T2 
+       holds L2 while waiting to acquire L1.
+    3. No Preemption: Mutexes cannot be forcibly confiscated from a thread. A lock 
+       is only released voluntarily after the holding thread finishes its work.
+    4. Circular Wait: Thread T1 is waiting for L2 (held by T2), and Thread T2 
+       is waiting for L1 (held by T1), creating a closed circular cycle of waiting:
+       T1 -> L2 -> T2 -> L1 -> T1.
+
+(b) Propose a single lock acquisition order for both threads. Name the condition 
+    this policy eliminates and explain why. (4 points)
+    - Proposed Order: Enforce a strict global lock hierarchy: always acquire L1 
+      before acquiring L2. Both T1 and T2 must request L1 first, and then request L2.
+    - Condition Eliminated: Circular Wait.
+    - Explanation: If both threads must acquire locks in the order (L1, then L2), 
+      only one thread can successfully acquire L1 first. The other thread will 
+      block immediately on L1 before it ever touches L2. The thread holding L1 
+      can then acquire L2 without conflict, finish its work, and release both locks. 
+      A circular wait cycle is mathematically impossible.
+
+--------------------------------------------------------------------------------
+Question 8. Cycles in a resource allocation graph (8 points)
+--------------------------------------------------------------------------------
+Resource A has two interchangeable instances. Resource B has one. P1 holds one A 
+and requests B. P2 holds B and requests one A. P3 holds the other A and has no 
+pending requests. Assume P3 can finish and release its A instance.
+
+(a) List the directed edges, label their types, and write one directed cycle. 
+    (4 points)
+
+    Directed Edges:
+    - Assignment Edges (Resource -> Process):
+      1. A -> P1  (P1 is allocated one instance of A)
+      2. A -> P3  (P3 is allocated the second instance of A)
+      3. B -> P2  (P2 is allocated the only instance of B)
+    - Request Edges (Process -> Resource):
+      4. P1 -> B  (P1 requests an instance of B)
+      5. P2 -> A  (P2 requests an instance of A)
+
+    Directed Cycle:
+      P1 -> B -> P2 -> A -> P1
+      (P1 waits for B held by P2; P2 waits for A held by P1).
+
+(b) Decide whether a deadlock exists. Support your conclusion with a release and 
+    completion sequence. (4 points)
+    - Decision: NO DEADLOCK EXISTS.
+    - Explanation: While there is a cycle, a cycle in a Resource Allocation Graph 
+      only guarantees deadlock if every resource in the cycle has exactly one 
+      instance. Here, Resource A has multiple instances (2 instances), and one of 
+      them is held by process P3 which is not involved in any cycle.
+
+    Completion Sequence:
+    1. P3 has no pending requests. P3 runs to completion and releases its 
+       instance of Resource A.
+    2. Available instances of Resource A becomes 1.
+    3. The system grants this free instance of A to P2 (satisfying edge P2 -> A).
+    4. P2 now holds all needed resources (A and B). P2 runs to completion and 
+       releases both Resource A and Resource B.
+    5. The released instance of Resource B is granted to P1 (satisfying edge P1 -> B).
+    6. P1 now holds all needed resources (A and B). P1 runs to completion and 
+       releases all resources.
+    7. All three processes successfully complete. Therefore, no deadlock exists.
+
+--------------------------------------------------------------------------------
+DEADLOCK AVOIDANCE AND DETECTION (38 points)
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Question 9. Banker’s algorithm (10 points)
+--------------------------------------------------------------------------------
+Resource order (A, B). Available = (1, 1).
+Process    Allocation    Max
+P0         (1, 0)        (2, 1)
+P1         (1, 1)        (1, 2)
+P2         (0, 1)        (2, 2)
+
+(a) Compute Need for all three processes. (3 points)
+    Formula: Need = Max - Allocation
+    - Need(P0) = (2, 1) - (1, 0) = (1, 1)
+    - Need(P1) = (1, 2) - (1, 1) = (0, 1)
+    - Need(P2) = (2, 2) - (0, 1) = (2, 1)
+
+    Need Matrix:
+    Process    Need
+    P0         (1, 1)
+    P1         (0, 1)
+    P2         (2, 1)
+
+(b) Give one safe sequence for the original state and show Work after each 
+    simulated completion. (3 points)
+    Available = (1, 1). Set Work = (1, 1). Finish = [F, F, F].
+
+    Step 1: Check P1:
+            Need(P1) = (0, 1) <= Work (1, 1) -> TRUE.
+            P1 runs, finishes, and releases Allocation(P1) = (1, 1).
+            New Work = Work + Allocation(P1) = (1, 1) + (1, 1) = (2, 2).
+            Finish[P1] = True.
+
+    Step 2: Check P0:
+            Need(P0) = (1, 1) <= Work (2, 2) -> TRUE.
+            P0 runs, finishes, and releases Allocation(P0) = (1, 0).
+            New Work = Work + Allocation(P0) = (2, 2) + (1, 0) = (3, 2).
+            Finish[P0] = True.
+
+    Step 3: Check P2:
+            Need(P2) = (2, 1) <= Work (3, 2) -> TRUE.
+            P2 runs, finishes, and releases Allocation(P2) = (0, 1).
+            New Work = Work + Allocation(P2) = (3, 2) + (0, 1) = (3, 3).
+            Finish[P2] = True.
+
+    Safe Sequence: <P1, P0, P2>  (or <P0, P1, P2>)
+    Work progression: (1, 1) -> (2, 2) -> (3, 2) -> (3, 3).
+
+(c) P2 requests (1, 1) in the original state. Show whether it passes the Need 
+    and Available checks. Apply the safety check to the tentative grant and 
+    decide whether the system should grant it now. (4 points)
+
+    1. Preliminary Checks:
+       - Check 1: Request <= Need(P2)?
+         (1, 1) <= (2, 1) -> TRUE (1 <= 2 and 1 <= 1).
+       - Check 2: Request <= Available?
+         (1, 1) <= (1, 1) -> TRUE (1 <= 1 and 1 <= 1).
+       Both checks pass!
+
+    2. Tentative State Creation:
+       - Available' = Available - Request = (1, 1) - (1, 1) = (0, 0)
+       - Allocation'(P2) = Allocation(P2) + Request = (0, 1) + (1, 1) = (1, 2)
+       - Need'(P2) = Need(P2) - Request = (2, 1) - (1, 1) = (1, 0)
+
+       Summary of Tentative State:
+       Process    Allocation    Need
+       P0         (1, 0)        (1, 1)
+       P1         (1, 1)        (0, 1)
+       P2         (1, 2)        (1, 0)
+       Available' = (0, 0)
+
+    3. Safety Algorithm on Tentative State:
+       Set Work = (0, 0).
+       - Test P0: Need(P0) = (1, 1) <= Work (0, 0) -> FALSE
+       - Test P1: Need(P1) = (0, 1) <= Work (0, 0) -> FALSE
+       - Test P2: Need(P2) = (1, 0) <= Work (0, 0) -> FALSE
+
+       No process can have its needs met with Work = (0, 0). The system cannot 
+       find a safe sequence.
+       The tentative state is UNSAFE.
+
+    Decision:
+    The system should NOT grant the request now. P2 must wait until resources are 
+    released.
+
+--------------------------------------------------------------------------------
+Question 10. Unsafe state and current deadlock (8 points)
+--------------------------------------------------------------------------------
+The system has four identical units of one reusable resource. Two processes each 
+hold two units and each has a declared maximum of three units. Both are currently 
+computing, neither has an outstanding request, and processes retain all units 
+until completion.
+
+(a) Is the state safe under the Banker’s safety test? Explain using Available and 
+    Need. (4 points)
+    Analysis:
+    - Total resources = 4.
+    - Allocation: P1 holds 2 units, P2 holds 2 units.
+      Total allocated = 2 + 2 = 4 units.
+    - Available = Total - Allocated = 4 - 4 = 0 units.
+    - Need:
+      Need(P1) = Max - Allocation = 3 - 2 = 1 unit.
+      Need(P2) = Max - Allocation = 3 - 2 = 1 unit.
+
+    Safety Check:
+    - Current Available = 0.
+    - For a process to complete safely, we must have: Need <= Available.
+    - For P1: 1 <= 0 is FALSE.
+    - For P2: 1 <= 0 is FALSE.
+    - Neither process can be guaranteed to finish.
+    Answer: The state is UNSAFE.
+
+(b) Are the processes currently deadlocked? Explain what happens if both request 
+    one more unit before either releases any. (4 points)
+    - Are they currently deadlocked? NO.
+      Explanation: Both processes are currently computing and neither has an 
+      outstanding request. A deadlock only exists when processes are blocked 
+      waiting for an event or resource that cannot happen. Being in an unsafe 
+      state is NOT the same as being deadlocked; an unsafe state merely means 
+      deadlock is possible if maximum demands are requested.
+    - What happens if both request one more unit before releasing any:
+      If both processes request their remaining 1 unit, since Available = 0, 
+      neither request can be satisfied. Both processes block waiting for 1 unit. 
+      Since neither process will release any of its 2 held units until it completes, 
+      both processes are blocked waiting on each other forever.
+      A DEADLOCK IMMEDIATELY OCCURS.
+
+--------------------------------------------------------------------------------
+Question 11. Deadlock detection with current requests (10 points)
+--------------------------------------------------------------------------------
+Use resource order (A, B). Available = (0, 0).
+Process    Allocation    Request
+P0         (1, 0)        (0, 1)
+P1         (0, 1)        (1, 0)
+P2         (1, 0)        (1, 0)
+
+(a) Apply the multiple-instance deadlock detection algorithm. Show the starting 
+    Work vector, any simulated completions, and the set of deadlocked processes. 
+    (5 points)
+
+    Starting Setup:
+    - Work = Available = (0, 0).
+    - Finish vector: For any process with non-zero allocation, Finish = False.
+      Finish[P0] = False, Finish[P1] = False, Finish[P2] = False.
+
+    Algorithm Execution:
+    - Check P0: Request(P0) = (0, 1) <= Work (0, 0) -> FALSE
+    - Check P1: Request(P1) = (1, 0) <= Work (0, 0) -> FALSE
+    - Check P2: Request(P2) = (1, 0) <= Work (0, 0) -> FALSE
+
+    No process can have its request satisfied.
+    Simulated completions: NONE.
+    Set of Deadlocked Processes: {P0, P1, P2} (All three processes are deadlocked).
+
+(b) Repeat from the same starting allocations with P2’s Request changed to (0, 0). 
+    Show Work after each simulated completion and report whether any process 
+    remains deadlocked. (5 points)
+
+    Starting Setup:
+    - Work = Available = (0, 0).
+    - Request(P2) = (0, 0). Since P2 has no outstanding requests, it can run 
+      to completion immediately.
+
+    Algorithm Execution:
+    Step 1: Process P2 finishes:
+            P2 releases Allocation(P2) = (1, 0).
+            New Work = Work + Allocation(P2) = (0, 0) + (1, 0) = (1, 0).
+            Finish[P2] = True.
+
+    Step 2: Check remaining processes against Work = (1, 0):
+            - Check P1: Request(P1) = (1, 0) <= Work (1, 0) -> TRUE.
+            P1 runs, finishes, and releases Allocation(P1) = (0, 1).
+            New Work = Work + Allocation(P1) = (1, 0) + (0, 1) = (1, 1).
+            Finish[P1] = True.
+
+    Step 3: Check remaining process P0 against Work = (1, 1):
+            - Check P0: Request(P0) = (0, 1) <= Work (1, 1) -> TRUE.
+            P0 runs, finishes, and releases Allocation(P0) = (1, 0).
+            New Work = Work + Allocation(P0) = (1, 1) + (1, 0) = (2, 1).
+            Finish[P0] = True.
+
+    Completion Sequence: <P2, P1, P0>.
+    Work progression: (0, 0) -> (1, 0) -> (1, 1) -> (2, 1).
+    Conclusion: Finish is True for all processes. NO PROCESS REMAINS DEADLOCKED.
+
+--------------------------------------------------------------------------------
+Question 12. Diagnosing progress problems (10 points)
+--------------------------------------------------------------------------------
+(a) Classify each case as deadlock, livelock, starvation, or priority inversion. 
+    Give a short reason for each. (8 points)
+
+    A. Two workers each block while requesting a lock held by the other.
+       - Classification: DEADLOCK
+       - Reason: Both threads are permanently asleep/blocked waiting for a 
+         resource held by the other. Neither consumes CPU nor makes progress.
+
+    B. Two workers keep acquiring, releasing, and retrying their locks in step. 
+       Neither completes its operation.
+       - Classification: LIVELOCK
+       - Reason: Both threads are actively running and executing instructions 
+         (consuming CPU time) and changing states, but they are stuck in a 
+         synchronized loop and make no actual forward progress.
+
+    C. New requests overtake an older waiter indefinitely while other requests 
+       continue to complete.
+       - Classification: STARVATION (Indefinite Postponement)
+       - Reason: The system as a whole is making progress (other requests are 
+         completing), but one specific older waiting process is continually 
+         bypassed and denied service unfairly.
+
+    D. A high-priority worker waits for a mutex held by a low-priority worker. 
+       A medium-priority worker that does not use the mutex keeps preempting its 
+       owner.
+       - Classification: PRIORITY INVERSION
+       - Reason: The low-priority mutex holder is preempted by an unrelated 
+         medium-priority task, which indirectly prevents the high-priority task 
+         from running, inverting their intended priority order.
+
+(b) Give one appropriate mitigation for case D and explain how it helps. (2 points)
+    - Mitigation: Priority Inheritance Protocol.
+    - How it helps: When the high-priority worker blocks waiting for the mutex 
+      held by the low-priority worker, the low-priority worker temporarily 
+      inherits the higher priority of the waiting worker. This prevents any 
+      medium-priority worker from preempting the lock holder. Once the low-priority 
+      worker finishes its critical section and releases the mutex, its priority 
+      reverts to normal, and the high-priority worker immediately acquires the 
+      mutex and runs without delay.
+================================================================================
